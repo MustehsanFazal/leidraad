@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>JS-Rendered Scraper</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    input, button { font-size: 1rem; padding: .5rem; }
+    pre { background: #f4f4f4; padding: 1rem; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>Uitspraken Scraper</h1>
+  <p>Voer een ECLI in en klik “Scrape”:<br>
+    <input id="ecli" placeholder="bijv. ECLI:NL:RBDHA:2020:12345" size="30">
+    <button id="scrapeBtn">Scrape</button>
+  </p>
+  <pre id="output">Resultaat verschijnt hier…</pre>
+
+  <script>
+  document.getElementById('scrapeBtn').addEventListener('click', async () => {
+    const ecli = document.getElementById('ecli').value.trim();
+    if (!ecli) return alert('Vul een ECLI in.');
+
+    // --- CONFIGUREER HIER JE SCRAPING-API ---
+    const API_KEY = 'YOUR_SCRAPERAPI_KEY';
+    const targetUrl = 'https://uitspraken.rechtspraak.nl/?ecli=' + encodeURIComponent(ecli);
+
+    // Bouw de call naar ScraperAPI (of je favoriete service)
+    const apiUrl = `https://api.scraperapi.com?api_key=${API_KEY}&url=${encodeURIComponent(targetUrl)}`;
+
+    document.getElementById('output').textContent = 'Loading…';
+
+    try {
+      const res = await fetch(apiUrl);
+      if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+      const html = await res.text();
+
+      // Parse met DOMParser
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const dl = [...doc.querySelectorAll('.definition-list dt')];
+      const data = {};
+      dl.forEach(dt => {
+        const key = dt.textContent.trim().toLowerCase().replace(/\s+/g, '_');
+        const dd = dt.nextElementSibling;
+        data[key] = dd ? dd.textContent.trim() : null;
+      });
+
+      document.getElementById('output').textContent = JSON.stringify(data, null, 2);
+    } catch (err) {
+      document.getElementById('output').textContent = 'Error: ' + err;
+    }
+  });
+  </script>
+</body>
+</html>
