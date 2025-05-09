@@ -2,55 +2,101 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8">
-  <title>JS-Rendered Scraper</title>
+  <title>Uitspraken Scraper</title>
   <style>
-    body { font-family: sans-serif; padding: 2rem; }
-    input, button { font-size: 1rem; padding: .5rem; }
-    pre { background: #f4f4f4; padding: 1rem; overflow: auto; }
+    body {
+      font-family: sans-serif;
+      max-width: 600px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+    h1 {
+      text-align: center;
+    }
+    label,
+    input,
+    button {
+      font-size: 1rem;
+    }
+    input {
+      padding: 0.5rem;
+      width: 70%;
+      box-sizing: border-box;
+    }
+    button {
+      padding: 0.5rem 1rem;
+      margin-left: 0.5rem;
+    }
+    pre {
+      background: #f4f4f4;
+      padding: 1rem;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      margin-top: 1rem;
+    }
   </style>
 </head>
 <body>
   <h1>Uitspraken Scraper</h1>
-  <p>Voer een ECLI in en klik “Scrape”:<br>
-    <input id="ecli" placeholder="bijv. ECLI:NL:RBDHA:2020:12345" size="30">
-    <button id="scrapeBtn">Scrape</button>
+  <p>
+    <label for="ecli">Voer een ECLI in:</label><br>
+    <input id="ecli" placeholder="ECLI:NL:RBDHA:2018:8801">
+    <button id="searchBtn">Zoek</button>
   </p>
   <pre id="output">Resultaat verschijnt hier…</pre>
 
   <script>
-  document.getElementById('scrapeBtn').addEventListener('click', async () => {
-    const ecli = document.getElementById('ecli').value.trim();
-    if (!ecli) return alert('Vul een ECLI in.');
+    document.getElementById('searchBtn').addEventListener('click', async () => {
+      const output = document.getElementById('output');
+      const raw = document.getElementById('ecli').value.trim();
+      if (!raw) {
+        alert('Vul een ECLI in.');
+        return;
+      }
 
-    // --- CONFIGUREER HIER JE SCRAPING-API ---
-    const API_KEY = 'YOUR_SCRAPERAPI_KEY';
-    const targetUrl = 'https://uitspraken.rechtspraak.nl/?ecli=' + encodeURIComponent(ecli);
+      const ecli = raw.toUpperCase();
+      output.textContent = 'Loading…';
 
-    // Bouw de call naar ScraperAPI (of je favoriete service)
-    const apiUrl = `https://api.scraperapi.com?api_key=${API_KEY}&url=${encodeURIComponent(targetUrl)}`;
+      // 1) Bouw de “officiële” search-URL
+      const idx  = 'uitspraken';
+      const rows = 1;
+      const searchUrl =
+        'https://uitspraken.rechtspraak.nl/api/v2/search'
+        + '?idx=' + encodeURIComponent(idx)
+        + '&q='   + encodeURIComponent(ecli)
+        + '&rows=' + rows;
 
-    document.getElementById('output').textContent = 'Loading…';
+      // 2) Wrap in ThingProxy om CORS te omzeilen
+      const proxyUrl = 'https://thingproxy.freeboard.io/fetch/' + encodeURIComponent(searchUrl);
 
-    try {
-      const res = await fetch(apiUrl);
-      if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
-      const html = await res.text();
+      try {
+        const res = await fetch(proxyUrl);
+        if (!res.ok) {
+          throw new Error(res.status + ' ' + res.statusText);
+        }
 
-      // Parse met DOMParser
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      const dl = [...doc.querySelectorAll('.definition-list dt')];
-      const data = {};
-      dl.forEach(dt => {
-        const key = dt.textContent.trim().toLowerCase().replace(/\s+/g, '_');
-        const dd = dt.nextElementSibling;
-        data[key] = dd ? dd.textContent.trim() : null;
-      });
+        // Lees als tekst en parse JSON (valt terug als content-type niet klopt)
+        const text = await res.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (parseErr) {
+          throw new Error('Ongeldige JSON ontvangen:\n' + text.slice(0,200));
+        }
 
-      document.getElementById('output').textContent = JSON.stringify(data, null, 2);
-    } catch (err) {
-      document.getElementById('output').textContent = 'Error: ' + err;
-    }
-  });
+        const hits = data.hits || [];
+        if (hits.length === 0) {
+          output.textContent = 'Geen resultaat voor ' + ecli;
+          return;
+        }
+
+        // Toon de eerste hit als mooie JSON
+        output.textContent = JSON.stringify(hits[0], null, 2);
+
+      } catch (err) {
+        output.textContent = 'Error: ' + err.message;
+      }
+    });
   </script>
 </body>
 </html>
